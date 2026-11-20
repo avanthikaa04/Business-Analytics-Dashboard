@@ -38,7 +38,7 @@ def main():
     frame["BillNo"] = frame["BillNo"].astype(str)
     frame["Order_Datetime"] = frame["Order_Datetime"].dt.strftime("%Y-%m-%d %H:%M:%S")
 
-    rows = list(frame.itertuples(index=False, name=None))
+   
     initialize_database()
     with get_connection() as conn:
         conn.execute("DELETE FROM order_lines")
@@ -47,8 +47,9 @@ def main():
             (bill_no, outlet_name, order_datetime, category, order_type,
              item, price, quantity, settlement, brand)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, rows)
+        """, frame.itertuples(index=False, name=None))
         conn.commit()
+
 
     print(f"Imported {len(rows):,} line items.")
     print(f"Unique orders: {frame['BillNo'].nunique():,}")
