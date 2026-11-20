@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: business-analytics-api
+    runtime: python
+    plan: free
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: python scripts/import_data.py && uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
