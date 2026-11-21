@@ -1,89 +1,151 @@
 # Business Analytics Dashboard
 
-A full-stack restaurant analytics dashboard built from the supplied Excel dataset. It uses **React + Vite** for the interface, **FastAPI** for the API, and **SQLite** for local analytics storage.
+A full-stack restaurant analytics dashboard built using the supplied restaurant sales dataset containing 300,000 order-line records. The application provides interactive business metrics, revenue trends, category analysis, outlet comparisons, order-type breakdowns, and searchable order records.
 
-## Dataset inspected
+## Live application
 
-The supplied workbook (`backend/data/data.xlsx`) contains:
+- **Frontend:** https://business-analytics-dashboard-fronte.vercel.app/
+- **Backend API:** https://business-analytics-dashboard-1-pr6z.onrender.com
+- **API health check:** https://business-analytics-dashboard-1-pr6z.onrender.com/health
+- **GitHub repository:** https://github.com/avanthikaa04/Business-Analytics-Dashboard
 
-- **300,000 line-item rows**
-- **110,478 unique bills/orders**
-- **10 columns:** `BillNo`, `Outlet_Name`, `Order_Datetime`, `Group`, `Order_Type`, `Item`, `Price`, `Quantity`, `Settlement`, `Brand`
-- Date range: **2025-06-17 to 2026-06-16**
-- No missing values were found in the inspected columns.
-- Revenue is calculated as `Price * Quantity` per line item. The sum across the workbook is **₹69,480,952**.
+## Tech stack
 
-A bill can span multiple rows. Therefore, the dashboard counts orders using `COUNT(DISTINCT bill_no)`, not the number of rows.
+| Layer | Technology |
+|---|---|
+| Frontend | React, Vite |
+| Backend | Python, FastAPI |
+| Database | PostgreSQL (Neon) |
+| Database driver | psycopg |
+| Data processing | Pandas, OpenPyXL |
+| Frontend deployment | Vercel |
+| Backend deployment | Render |
 
-## Features
+## Dataset overview
 
-- KPI cards: total revenue, unique orders, average order value, line-item records and units.
-- Revenue trend by day.
-- Revenue by menu category.
-- Unique orders by order type.
+The supplied Excel workbook was inspected and used as the source for the dashboard.
+
+| Metric | Value |
+|---|---:|
+| Order-line records | 300,000 |
+| Unique bills/orders | 110,478 |
+| Total revenue | ₹69,480,952 |
+| Total quantity | 434,448 |
+| Average order value | ₹628.91 |
+| Date range | 17 June 2025 – 16 June 2026 |
+| Brand | Burger Town |
+| Outlets | 6 |
+
+The dataset contains these fields:
+
+`BillNo`, `Outlet_Name`, `Order_Datetime`, `Group`, `Order_Type`, `Item`, `Price`, `Quantity`, `Settlement`, and `Brand`.
+
+**Important data interpretation:** Each row represents an order line, not necessarily a complete bill. A single bill can contain multiple items and therefore multiple rows. The dashboard calculates the number of orders using distinct bill numbers rather than counting rows. Revenue is calculated as `Price × Quantity` for each line item and then aggregated.
+
+## Dashboard features
+
+- KPI summary including total revenue, unique orders, average order value, line-item records, and total quantity.
+- Revenue trend over time.
+- Revenue breakdown by menu category.
+- Unique orders grouped by order type.
 - Top outlets ranked by revenue.
-- Filters for date range, outlet, brand, category, order type and settlement/payment.
-- Searchable, paginated line-item table.
-- Export the currently visible table page to CSV.
-- SQLite indexes for common filter columns and bill number.
+- Filter options for date range, outlet, brand, category, order type, and settlement.
+- Searchable and paginated order-line data.
+- Backend API endpoints that return aggregated chart data instead of sending the entire dataset to the browser.
 
 ## Architecture
 
 ```text
-Excel workbook
-    |
-    v
-Python / Pandas ETL (scripts/import_data.py)
-    |
-    v
-SQLite database (order_lines table + indexes)
-    |
-    v
-FastAPI endpoints (/api/overview, /api/revenue-trend, ...)
-    |
-    v
-React + Recharts dashboard
+Supplied Excel workbook
+        |
+        v
+Data inspection and processing
+        |
+        v
+Local data preparation / migration
+        |
+        v
+Neon PostgreSQL database
+        |
+        v
+FastAPI backend (Render)
+        |
+        v
+React + Vite frontend (Vercel)
 ```
 
-### Why SQLite?
+The frontend communicates with the FastAPI backend through HTTP API requests. The backend queries PostgreSQL and returns either aggregated results for charts and KPI cards or paginated records for the data table.
 
-For this assessment dataset (300K rows), SQLite is a lightweight relational database that can be packaged with the backend and queried efficiently with indexes. It avoids the operational overhead of provisioning a separate database service. The backend performs aggregation in SQL and sends only summarized chart data to the browser; the browser never downloads all 300K rows.
+## Database and design decisions
 
-For a multi-user production deployment with concurrent writes, larger growth, or distributed backend instances, PostgreSQL would be a stronger next step. SQLite is used here because the dataset is read-heavy and the assessment scope is time-limited.
+### Why PostgreSQL with Neon?
 
-### ETL decisions and assumptions
+The dashboard uses PostgreSQL hosted on Neon for its deployed database. PostgreSQL provides relational querying, aggregation, indexing, and support for concurrent application requests. Neon provides a managed PostgreSQL service, so a separate database server does not need to be maintained for this assessment.
 
-1. Pandas reads the Excel workbook and validates the required column names.
-2. Dates are normalized to `YYYY-MM-DD HH:MM:SS`.
-3. Price and quantity are converted to numeric values; rows missing required numeric/date fields are dropped.
-4. Blank descriptive values are labeled `Unknown`.
-5. The import is repeatable: the target table is cleared and reloaded on each run.
-6. Each source row is treated as one order line. Line revenue is `price * quantity`.
-7. `BillNo` is stored as text to preserve identifier formatting.
-8. The provided `Settlement` field is displayed as the payment/channel dimension; the source may combine multiple settlement methods into one label.
+The source data was prepared locally and migrated to Neon in batches of 5,000 records. The migration was designed to avoid loading all records into memory or inserting the entire dataset in one operation. The deployed backend connects to PostgreSQL using the `DATABASE_URL` environment variable.
+
+Indexes are used on commonly queried fields, including order date/time, bill number, outlet, category, order type, and brand, to support filtering and aggregation.
+
+### Data handling and assumptions
+
+1. The Excel workbook was inspected to understand its columns, date range, and record count.
+2. Each source row is treated as one order line.
+3. Revenue is calculated as `price * quantity`.
+4. Unique orders are counted using distinct bill numbers because one bill may contain multiple order lines.
+5. The `BillNo` identifier is stored as text to preserve its identifier format.
+6. The `Settlement` field is treated as the settlement/payment dimension provided by the source dataset.
+7. The source workbook and database credentials are not committed to the public repository.
+
+## Backend API
+
+The backend exposes the following endpoints:
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /` | Basic API response |
+| `GET /health` | API status and database record count |
+| `GET /api/filters` | Available filter values and date range |
+| `GET /api/overview` | Dashboard KPI summary |
+| `GET /api/revenue-trend` | Revenue trend over time |
+| `GET /api/category-breakdown` | Revenue and quantity grouped by category |
+| `GET /api/order-types` | Unique orders grouped by order type |
+| `GET /api/top-outlets` | Top outlets ranked by revenue |
+| `GET /api/orders` | Searchable, paginated order-line records |
+
+Analytics endpoints support the available dashboard filters, such as date range, outlet, brand, category, order type, and settlement, where applicable.
+
+Interactive API documentation is available at:
+
+`https://business-analytics-dashboard-1-pr6z.onrender.com/docs`
 
 ## Run locally
 
-### Requirements
+### Prerequisites
 
 - Python 3.10+
 - Node.js 18+
 - npm
+- A PostgreSQL database (for example, a Neon database)
 
-### 1. Backend setup
+### 1. Clone the repository
 
-Open a terminal in the project root:
+```bash
+git clone https://github.com/avanthikaa04/Business-Analytics-Dashboard.git
+cd Business-Analytics-Dashboard
+```
+
+### 2. Configure the backend
 
 ```bash
 cd backend
 python -m venv .venv
 ```
 
-Activate the environment:
+Activate the virtual environment.
 
 **Windows PowerShell**
 ```powershell
-.venv\\Scripts\\Activate.ps1
+.venv\Scripts\Activate.ps1
 ```
 
 **macOS / Linux**
@@ -91,101 +153,98 @@ Activate the environment:
 source .venv/bin/activate
 ```
 
-Install dependencies and import the Excel file:
+Install the backend dependencies:
 
 ```bash
 pip install -r requirements.txt
-python scripts/import_data.py
+```
+
+Create a `.env` file in the `backend` directory and add your own PostgreSQL connection string:
+
+```env
+DATABASE_URL=postgresql://USERNAME:PASSWORD@HOST/DATABASE?sslmode=require
+```
+
+Replace the example values with the connection details from your own PostgreSQL database. Do not commit `.env` or share database credentials publicly.
+
+Start the backend from the `backend` directory:
+
+```bash
 uvicorn app.main:app --reload --port 8000
 ```
 
-API documentation: http://localhost:8000/docs  
-Health check: http://localhost:8000/health
+The local API will be available at `http://localhost:8000`, with interactive documentation at `http://localhost:8000/docs`.
 
-The default database path is `backend/data/analytics.db`. To use another path, set `DB_PATH`.
+**Data requirement:** The database must contain the dashboard dataset for the analytics endpoints to return the same results as the live application. The original workbook and local migration utility are not included in the public repository.
 
-### 2. Frontend setup
+### 3. Configure and run the frontend
 
-Open a second terminal from the project root:
+Open a second terminal:
 
 ```bash
 cd frontend
 npm install
 ```
 
-Create `frontend/.env`:
+Create a `.env` file in the `frontend` directory:
 
 ```env
 VITE_API_URL=http://localhost:8000
 ```
 
-Start the frontend:
+Start the development server:
 
 ```bash
 npm run dev
 ```
 
-Open the Vite URL shown in the terminal (normally http://localhost:5173).
-
-## API endpoints
-
-| Endpoint | Purpose |
-|---|---|
-| `GET /health` | API status and imported row count |
-| `GET /api/filters` | Available filter values and date bounds |
-| `GET /api/overview` | KPI summary |
-| `GET /api/revenue-trend` | Daily revenue and order trend |
-| `GET /api/category-breakdown` | Revenue and units by category |
-| `GET /api/order-types` | Unique order count by order type |
-| `GET /api/top-outlets` | Top 10 outlets by revenue |
-| `GET /api/orders` | Paginated order-line records and search |
-
-All analytics endpoints accept optional query parameters: `start_date`, `end_date`, `outlet`, `brand`, `category`, `order_type`, and `settlement`.
+Open the local URL printed by Vite, usually `http://localhost:5173`.
 
 ## Deployment
 
-### Backend on Render
+### Backend — Render
 
-1. Push this repository to a **public GitHub repository**.
-2. In Render, create a **New → Web Service** and connect the repository.
-3. Set **Root Directory** to `backend`.
-4. Set **Build Command** to `pip install -r requirements.txt`.
-5. Set **Start Command** to `python scripts/import_data.py && uvicorn app.main:app --host 0.0.0.0 --port $PORT`.
-6. Deploy. The startup command imports the included workbook into SQLite before starting the API.
-7. Copy the Render service URL, for example `https://your-api.onrender.com`.
+The FastAPI backend is deployed on Render.
 
-Note: Render's free filesystem can be ephemeral. This project re-imports the workbook at service startup so the database can be recreated. On a paid/persistent deployment, set `DB_PATH` to a mounted persistent disk path and run the import command once when provisioning or updating the dataset.
+- Root directory: `backend`
+- Build command: `pip install -r requirements.txt`
+- Start command: `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
+- Environment variable: `DATABASE_URL` (configured privately in the Render service)
 
-### Frontend on Vercel
+### Database — Neon
 
-1. Import the same GitHub repository into Vercel.
-2. Set **Root Directory** to `frontend`.
-3. Framework preset: **Vite**.
-4. Build command: `npm run build`.
-5. Output directory: `dist`.
-6. Add environment variable `VITE_API_URL` with your deployed backend URL (no trailing slash).
-7. Deploy and open the Vercel URL.
+The application uses a Neon PostgreSQL database. The backend reads its connection string from the `DATABASE_URL` environment variable. Database credentials are not stored in the source code or public repository.
 
-After deploying, verify the dashboard loads and test at least one filter. The API's CORS policy is open for assessment convenience; for a public production deployment, restrict `allow_origins` in `backend/app/main.py` to your Vercel domain.
+### Frontend — Vercel
 
-## Performance notes
+The React + Vite frontend is deployed on Vercel.
 
-- SQL aggregates are calculated by SQLite, not in the browser.
-- Database indexes are created for timestamp, bill number, outlet, category, order type and brand.
-- The table API returns only 25 rows per page (maximum 100).
-- Chart endpoints return grouped results rather than raw line items.
-- Filter controls pass parameters to the backend so all displayed metrics use the same selected scope.
+- Root directory: `frontend`
+- Build command: `npm run build`
+- Output directory: `dist`
+- Environment variable: `VITE_API_URL`, set to the deployed Render backend URL.
 
-## Known scope / possible improvements
+## Performance considerations
 
-- The CSV action exports the current table page, not every matching row.
-- Authentication and role-based access are not included because they are optional for this assessment.
-- A future production version could use PostgreSQL, background ETL jobs, cached aggregates, automated tests and a restricted CORS allowlist.
+- PostgreSQL performs filtering and aggregation on the backend.
+- Indexes are created for commonly filtered and queried columns.
+- Chart endpoints return grouped results rather than all 300,000 source rows.
+- The orders endpoint uses pagination to limit the amount of data returned per request.
+- The frontend requests only the data needed for the selected dashboard view and filters.
 
-## Submission checklist
+## Limitations and possible improvements
 
-- [ ] Push project to public GitHub.
-- [ ] Deploy backend and confirm `/health` reports the imported record count.
-- [ ] Deploy frontend with `VITE_API_URL`.
-- [ ] Test date, outlet and category filters.
-- [ ] Add the actual GitHub and live URLs to the assessment submission.
+- The public repository does not include the original Excel workbook, database dump, or database credentials.
+- Reproducing the exact populated dashboard locally requires loading the source dataset into a PostgreSQL database.
+- Authentication and role-based access are not implemented.
+- Further improvements could include automated tests, caching frequently requested aggregates, background data refresh jobs, and stricter production CORS configuration.
+
+## Submission links
+
+- **GitHub:** https://github.com/avanthikaa04/Business-Analytics-Dashboard
+- **Live dashboard:** https://business-analytics-dashboard-fronte.vercel.app/
+- **Backend API:** https://business-analytics-dashboard-1-pr6z.onrender.com
+
+---
+
+**Developed by:** Sri Avanthikaa
